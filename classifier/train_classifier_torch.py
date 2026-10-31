@@ -113,8 +113,14 @@ def main():
     num_classes = len(names)
     print(f"数据集: {X.shape}, 类别数: {num_classes}")
 
+    # 样本少于 2 张的类别无法分层抽样，这种情况退化成随机划分
+    counts = np.bincount(y)
+    stratify = y if counts[counts > 0].min() >= 2 else None
+    if stratify is None:
+        print("存在只有 1 张图的类别，验证集改用随机划分")
+
     X_tr, X_val, y_tr, y_val = train_test_split(
-        X, y, test_size=args.val_ratio, random_state=args.seed, stratify=y
+        X, y, test_size=args.val_ratio, random_state=args.seed, stratify=stratify
     )
 
     if args.augment:
