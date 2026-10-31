@@ -99,16 +99,13 @@ def main():
     n_val = int(len(train_ids) * args.val_ratio)
     val_set = set(train_ids[:n_val])
 
-    class_index = {code: i for i, code in enumerate(sorted(keep))}
     stat = Counter()
 
     for img_id in tqdm(ids, desc="生成检测集"):
         info = ann["imgs"][img_id]
         rel = info["path"]
-        if not (rel.startswith("train/") or rel.startswith("test/")):
-            continue
 
-        # 检测是单类，保留所有框；分类的裁剪图才按类别数量筛选
+        # 有标注的图全部参与，包括 other/ 里那批带框的图，否则稀疏类别裁不出图
         objects = info.get("objects", [])
         if not objects:
             continue
@@ -182,9 +179,10 @@ def main():
         print(f"负样本: {neg_count} 张（{neg_count / max(pos_train, 1):.0%} 正样本）")
 
     # 类别名表
+    actual = sorted([d.name for d in cls_out.iterdir() if d.is_dir() and any(d.iterdir())]) if cls_out.exists() else []
     rows = ["ClassId,Code,SignName"]
-    for code in sorted(class_index, key=lambda c: class_index[c]):
-        rows.append(f'{class_index[code]},{code},"{code_to_name(code)}"')
+    for i, code in enumerate(actual):
+        rows.append(f'{i},{code},"{code_to_name(code)}"')
     (out / "signnames_tt100k.csv").write_text("\n".join(rows), encoding="utf-8")
 
     yaml_text = (
@@ -200,7 +198,7 @@ def main():
 
     print("完成：", dict(stat))
     print(f"检测集：{out}")
-    print(f"分类图：{cls_out}（{len(class_index)} 类）")
+    print(f"分类图：{cls_out}（实际 {len(actual)} 类，裁剪 {stat['crops']} 张）")
     print(f"配置：{yaml_path}")
     print(f"类别表：{out / 'signnames_tt100k.csv'}")
 
