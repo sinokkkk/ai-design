@@ -160,6 +160,7 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0.0
+        seen = 0
         bar = tqdm(train_loader, desc=f"epoch {epoch}/{args.epochs}", leave=False)
         for xb, yb in bar:
             xb, yb = xb.to(device), yb.to(device)
@@ -168,7 +169,8 @@ def main():
             loss.backward()
             opt.step()
             total_loss += loss.item() * xb.size(0)
-            bar.set_postfix(loss=f"{total_loss / ((bar.n) * args.batch):.4f}")
+            seen += xb.size(0)
+            bar.set_postfix(loss=f"{total_loss / seen:.4f}")
 
         model.eval()
         correct = 0
