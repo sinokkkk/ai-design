@@ -21,6 +21,7 @@ from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from classifier.model_torch import TrafficSignNet
@@ -67,15 +68,19 @@ def load_dataset(root, size):
         raise RuntimeError(f"{root} 下没有类别文件夹")
 
     X, y, names = [], [], {}
+    total = sum(1 for d in class_dirs for f in d.iterdir() if f.suffix.lower() in IMG_EXTS)
+    bar = tqdm(total=total, desc="读取数据")
     for idx, d in enumerate(class_dirs):
         names[idx] = d.name
         files = [f for f in d.iterdir() if f.suffix.lower() in IMG_EXTS]
         for f in files:
+            bar.update(1)
             img = cv2.imread(str(f))
             if img is None:
                 continue
             X.append(preprocess(img, size))
             y.append(idx)
+    bar.close()
 
     X = np.array(X, dtype=np.float32)
     y = np.array(y, dtype=np.int64)
@@ -124,8 +129,13 @@ def main():
     )
 
     if args.augment:
-        aug_X = [random_augment((x * 255).astype(np.uint8)) for x in X_tr]
-        aug_X = np.array([preprocess(a, size) for a in aug_X], dtype=np.float32)
+        bar = tqdm(total=len(X_tr), desc="数据增强", leave=False)
+        aug_X = []
+        for x in X_tr:
+            aug_X.append(preprocess(random_augment((x * 255).astype(np.uint8)), size))
+            bar.update(1)
+        bar.close()
+        aug_X = np.array(aug_X, dtype=np.float32)
         X_tr = np.concatenate([X_tr, aug_X], axis=0)
         y_tr = np.concatenate([y_tr, y_tr], axis=0)
 
@@ -150,13 +160,15 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0.0
-        for xb, yb in train_loader:
+        bar = tqdm(train_loader, desc=f"epoch {epoch}/{args.epochs}", leave=False)
+        for xb, yb in bar:
             xb, yb = xb.to(device), yb.to(device)
             opt.zero_grad()
             loss = crit(model(xb), yb)
             loss.backward()
             opt.step()
             total_loss += loss.item() * xb.size(0)
+            bar.set_postfix(loss=f"{total_loss / ((bar.n) * args.batch):.4f}")
 
         model.eval()
         correct = 0

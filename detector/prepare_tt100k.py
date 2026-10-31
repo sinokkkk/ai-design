@@ -17,6 +17,7 @@ from collections import Counter
 from pathlib import Path
 
 import cv2
+from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import dataset_root  # noqa: E402
@@ -69,6 +70,8 @@ def main():
                    help="负样本（无标志图）占训练正样本的比例，0 表示不用")
     p.add_argument("--yaml-out", default=None,
                    help="检测配置输出路径，默认 detector/data_tt100k.yaml")
+    p.add_argument("--skip-cls", action="store_true",
+                   help="只重生成检测集和配置，跳过分类裁剪图（已裁过时用）")
     args = p.parse_args()
 
     ds = dataset_root(args.dataset_root)
@@ -99,13 +102,14 @@ def main():
     class_index = {code: i for i, code in enumerate(sorted(keep))}
     stat = Counter()
 
-    for img_id in ids:
+    for img_id in tqdm(ids, desc="生成检测集"):
         info = ann["imgs"][img_id]
         rel = info["path"]
         if not (rel.startswith("train/") or rel.startswith("test/")):
             continue
 
-        objects = [o for o in info.get("objects", []) if o["category"] in keep]
+        # 检测是单类，保留所有框；分类的裁剪图才按类别数量筛选
+        objects = info.get("objects", [])
         if not objects:
             continue
 
@@ -139,7 +143,9 @@ def main():
                 f"{(x2 - x1) / w:.6f} {(y2 - y1) / h:.6f}"
             )
 
-            # 分类用的裁剪图，只取合法框
+            # 分类裁剪图只保留样本足够的类别
+            if args.skip_cls or o["category"] not in keep:
+                continue
             code = o["category"]
             cdir = cls_out / code
             cdir.mkdir(parents=True, exist_ok=True)
