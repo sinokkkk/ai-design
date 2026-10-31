@@ -10,14 +10,11 @@ from ultralytics import YOLO
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from classifier.model_torch import TrafficSignNet
+from config import pick_device
 
 
-def get_device():
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        return torch.device("xpu:0")
-    if torch.cuda.is_available():
-        return torch.device("cuda:0")
-    return torch.device("cpu")
+def get_device(prefer="auto"):
+    return torch.device(pick_device(prefer))
 
 
 def clahe_rgb(img_bgr):
@@ -43,17 +40,21 @@ def main():
     parser.add_argument("--det", default="runs/detect/train2/weights/best.pt")
     parser.add_argument("--cls", default="output/trafficsignnet_v2.pth")
     parser.add_argument("--conf", type=float, default=0.25)
+    parser.add_argument("--device", default="auto", help="auto / cuda:0 / xpu:0 / cpu")
+    parser.add_argument("--det-device", default=None, help="检测器设备，留空自动")
+    parser.add_argument("--signnames", default="classifier/signnames.csv")
+    parser.add_argument("--num-classes", type=int, default=43)
     args = parser.parse_args()
 
-    device = get_device()
+    device = get_device(args.device)
     det = YOLO(args.det)
 
-    model = TrafficSignNet(num_classes=43)
+    model = TrafficSignNet(num_classes=args.num_classes)
     model.load_state_dict(torch.load(args.cls, map_location="cpu"))
     model.eval().to(device)
     size = (64, 64)
 
-    signnames = pd.read_csv("classifier/signnames.csv")
+    signnames = pd.read_csv(args.signnames)
 
     img = cv2.imread(args.image)
     if img is None:

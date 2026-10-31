@@ -6,13 +6,48 @@
 
 ## 运行环境
 
-Python 3.11，PyTorch。本机使用 Intel 核显加速：
+Python 3.11，PyTorch。设备和数据路径都从命令行传入，不写死在代码里。
+
+安装依赖（conda 环境，以 AutoDL 上为例）：
+
+```bash
+conda create -n aidedesign python=3.11 -y
+conda activate aidedesign
+# AutoDL 镜像一般已带 CUDA 版 torch，没带时按官网命令单独装
+pip install ultralytics opencv-python numpy pandas scikit-learn pillow
+```
+
+本机用 Intel 核显加速：
 
 ```bash
 E:/Anaconda/envs/torch-xpu/python.exe gui/app.py
 ```
 
-依赖：`torch`、`ultralytics`、`opencv-python`、`numpy`、`pandas`、`scikit-learn`、`pillow`。
+## 数据路径
+
+优先级从高到低：
+
+1. 命令行 `--data-root` / `--dataset-root`
+2. 环境变量 `DATASET_ROOT`
+3. 项目上一级的 `dataset/` 目录
+
+所以本机不用改代码，AutoDL 上只要设一次：
+
+```bash
+export DATASET_ROOT=/root/autodl-tmp/dataset
+```
+
+## 设备
+
+训练和推理脚本统一用 `--device` 指定，默认 `auto`：
+
+| 参数 | 用途 |
+| ---- | ---- |
+| `auto` | 自动选 xpu → cuda → cpu |
+| `--device 0` | 检测训练用，交给 ultralytics 识别 GPU 序号 |
+| `--device cuda:0` | 分类训练和推理用 |
+| `--device xpu:0` | 本机 Intel 核显 |
+| `--device cpu` | 纯 CPU |
 
 ## 目录结构
 
@@ -69,30 +104,51 @@ E:/Anaconda/envs/torch-xpu/python.exe gui/app.py
 python detector/convert_gtsdb_to_yolo.py
 python detector/convert_ppm_to_png.py
 python detector/train_detector.py
+
+# 中国数据集
+python detector/prepare_tt100k.py
+python detector/train_detector.py --data detector/data_tt100k.yaml --name tt100k_run1
 ```
+
+`train_detector.py` 支持 `--data` `--weights` `--imgsz` `--epochs` `--batch` `--device` `--name`。
 
 ### 分类
 
 数据需按类别分文件夹：`<data-root>/00000/*.ppm`、`<data-root>/00001/*.ppm` …
 
 ```bash
-python classifier/train_classifier_torch.py --data-root F:/ai-design/dataset/gtsrb_train/GTSRB/Training
+python classifier/train_classifier_torch.py                # 默认 GTSRB
+python classifier/train_classifier_torch.py --data-root /root/autodl-tmp/dataset/tt100k_cls --out output/tt100k.pth
 ```
 
-换数据集只需改 `--data-root`，类别数从目录自动读取：
-
-```bash
-python classifier/train_classifier_torch.py --data-root F:/ai-design/dataset/china --out output/china.pth
-```
+类别数从目录自动读取，换数据集只改 `--data-root`。
 
 ## 数据集
 
 - GTSDB：900 张 1360×800 道路全景图，训练集 600 张带标注，标注格式 `文件名;左;上;右;下;类别`。
 - GTSRB：43 类交通标志局部图。
+- TT100K：清华-腾讯中国交通标志数据集，16811 张，182 类细类。
 
-本机数据集放在 `F:/ai-design/dataset`。
+本机放在 `F:/ai-design/dataset`，AutoDL 上通过 `DATASET_ROOT` 指定。
 
 当前使用的 GTSRB 是 IJCNN 2011 竞赛训练子集，共 26640 张，不是官方 Final Training 的 39209 张。
+
+### TT100K 下载
+
+```bash
+mkdir -p ~/autodl-tmp/dataset/tt100k
+curl -L -o ~/autodl-tmp/dataset/tt100k/data.zip \
+  https://cg.cs.tsinghua.edu.cn/traffic-sign/data_model_code/data.zip
+unzip -q ~/autodl-tmp/dataset/tt100k/data.zip -d ~/autodl-tmp/dataset/tt100k
+```
+
+解压后目录为 `tt100k/data/`，含 `annotations.json` 和 `train/ test/ other/`。
+
+`prepare_tt100k.py` 会生成单类 YOLO 检测集（含负样本）和按类别裁剪的分类图：
+
+```bash
+python detector/prepare_tt100k.py --neg-ratio 0.2 --min-count 100
+```
 
 ## 指标
 

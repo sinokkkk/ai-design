@@ -6,8 +6,8 @@
     ...
 
 用法：
-    python classifier/train_classifier_torch.py --data-root F:/ai-design/dataset/gtsrb_train/GTSRB/Training
-    python classifier/train_classifier_torch.py --data-root F:/ai-design/dataset/china --out output/china.pth
+    python classifier/train_classifier_torch.py --data-root ../dataset/gtsrb_train/GTSRB/Training
+    python classifier/train_classifier_torch.py --data-root /root/autodl-tmp/dataset/tt100k_cls --out output/tt100k.pth --device cuda:0
 
 类数、类别名都从数据目录读，不用改代码。
 """
@@ -24,18 +24,9 @@ from torch.utils.data import DataLoader, TensorDataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from classifier.model_torch import TrafficSignNet
+from config import dataset_root, pick_device
 
 IMG_EXTS = (".ppm", ".png", ".jpg", ".jpeg", ".bmp")
-
-
-def get_device(prefer="auto"):
-    if prefer != "auto":
-        return torch.device(prefer)
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        return torch.device("xpu:0")
-    if torch.cuda.is_available():
-        return torch.device("cuda:0")
-    return torch.device("cpu")
 
 
 def clahe_rgb(img_bgr):
@@ -93,7 +84,9 @@ def load_dataset(root, size):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--data-root", required=True)
+    p.add_argument("--data-root", default=None,
+                   help="类别根目录，默认 <dataset-root>/gtsrb_train/GTSRB/Training")
+    p.add_argument("--dataset-root", default=None, help="数据集根目录，也可用环境变量 DATASET_ROOT")
     p.add_argument("--out", default="output/trafficsignnet_torch.pth")
     p.add_argument("--img-size", type=int, default=64)
     p.add_argument("--epochs", type=int, default=35)
@@ -101,17 +94,22 @@ def main():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--val-ratio", type=float, default=0.2)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--device", default="auto")
+    p.add_argument("--device", default="auto", help="auto / cuda:0 / xpu:0 / cpu")
     p.add_argument("--augment", type=int, default=1, help="1 开启增强，0 关闭")
     args = p.parse_args()
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    device = get_device(args.device)
+    device = torch.device(pick_device(args.device))
     print(f"设备: {device}")
 
+    data_root = Path(args.data_root) if args.data_root else dataset_root(args.dataset_root) / "gtsrb_train/GTSRB/Training"
+    if not Path(data_root).exists():
+        raise FileNotFoundError(f"找不到数据目录: {data_root}")
+    print(f"数据: {data_root}")
+
     size = (args.img_size, args.img_size)
-    X, y, names = load_dataset(args.data_root, size)
+    X, y, names = load_dataset(data_root, size)
     num_classes = len(names)
     print(f"数据集: {X.shape}, 类别数: {num_classes}")
 

@@ -11,14 +11,11 @@ from ultralytics import YOLO
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from classifier.model_torch import TrafficSignNet  # noqa: E402
+from config import pick_device  # noqa: E402
 
 
-def get_device():
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        return torch.device("xpu:0")
-    if torch.cuda.is_available():
-        return torch.device("cuda:0")
-    return torch.device("cpu")
+def get_device(prefer="auto"):
+    return torch.device(pick_device(prefer))
 
 
 def clahe_rgb(img_bgr):
@@ -30,15 +27,16 @@ def clahe_rgb(img_bgr):
 
 
 class Recognizer:
-    def __init__(self, det_weights=None, cls_weights=None, signnames=None):
+    def __init__(self, det_weights=None, cls_weights=None, signnames=None,
+                 num_classes=43, device="auto"):
         det_weights = det_weights or ROOT / "runs/detect/train2/weights/best.pt"
         cls_weights = cls_weights or ROOT / "output/trafficsignnet_v2.pth"
         signnames = signnames or ROOT / "classifier/signnames.csv"
 
-        self.device = get_device()
+        self.device = get_device(device)
         self.detector = YOLO(str(det_weights))
 
-        model = TrafficSignNet(num_classes=43)
+        model = TrafficSignNet(num_classes=num_classes)
         model.load_state_dict(torch.load(cls_weights, map_location="cpu"))
         self.classifier = model.eval().to(self.device)
 

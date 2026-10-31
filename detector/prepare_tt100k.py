@@ -12,10 +12,14 @@ import argparse
 import json
 import os
 import shutil
+import sys
 from collections import Counter
 from pathlib import Path
 
 import cv2
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from config import dataset_root  # noqa: E402
 
 # 按类别码前缀生成中文名，无法确定具体含义的保留编码
 FAMILY = {
@@ -54,9 +58,11 @@ def link_or_copy(src, dst):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--tt100k-root", required=True, help="包含 annotations.json 的 data 目录")
-    p.add_argument("--out", default="F:/ai-design/dataset/tt100k_yolo")
-    p.add_argument("--cls-out", default="F:/ai-design/dataset/tt100k_cls")
+    p.add_argument("--tt100k-root", default=None,
+                   help="包含 annotations.json 的 data 目录，默认 <dataset-root>/tt100k/data")
+    p.add_argument("--dataset-root", default=None)
+    p.add_argument("--out", default=None, help="检测集输出，默认 <dataset-root>/tt100k_yolo")
+    p.add_argument("--cls-out", default=None, help="分类图输出，默认 <dataset-root>/tt100k_cls")
     p.add_argument("--min-count", type=int, default=100, help="少于这个数量的类别丢弃")
     p.add_argument("--val-ratio", type=float, default=0.1, help="从 train 里划多少做验证集")
     p.add_argument("--neg-ratio", type=float, default=0.2,
@@ -65,7 +71,10 @@ def main():
                    help="检测配置输出路径，默认 detector/data_tt100k.yaml")
     args = p.parse_args()
 
-    root = Path(args.tt100k_root)
+    ds = dataset_root(args.dataset_root)
+    root = Path(args.tt100k_root) if args.tt100k_root else ds / "tt100k/data"
+    if not (root / "annotations.json").exists():
+        raise FileNotFoundError(f"{root} 下没有 annotations.json")
     ann = json.loads((root / "annotations.json").read_text(encoding="utf-8"))
 
     counts = Counter()
@@ -75,8 +84,8 @@ def main():
     keep = {c for c, n in counts.items() if n >= args.min_count}
     print(f"类别总数 {len(counts)}，保留 {len(keep)} 类（>= {args.min_count} 个样本）")
 
-    out = Path(args.out)
-    cls_out = Path(args.cls_out)
+    out = Path(args.out) if args.out else ds / "tt100k_yolo"
+    cls_out = Path(args.cls_out) if args.cls_out else ds / "tt100k_cls"
     for split in ("train", "val"):
         (out / "images" / split).mkdir(parents=True, exist_ok=True)
         (out / "labels" / split).mkdir(parents=True, exist_ok=True)

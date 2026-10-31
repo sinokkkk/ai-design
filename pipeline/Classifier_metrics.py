@@ -1,7 +1,10 @@
 """用 PyTorch 版分类模型在 GTSRB 上算准确率，划分方式和训练一致（80/20，seed=42）。
 
-用法：python pipeline/Classifier_metrics.py
+用法：
+    python pipeline/Classifier_metrics.py
+    python pipeline/Classifier_metrics.py --data-root /root/autodl-tmp/dataset/gtsrb_train/GTSRB/Training
 """
+import argparse
 import sys
 from pathlib import Path
 
@@ -13,22 +16,15 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from classifier.model_torch import TrafficSignNet
+from config import dataset_root, pick_device
 
-DATA_ROOT = Path("F:/ai-design/dataset/gtsrb_train/GTSRB/Training")
 MODEL_PATH = Path("output/trafficsignnet_v2.pth")
 
 IMG_SIZE = (64, 64)
 SEED = 42
 BATCH = 256
 SPEED_LIMIT_CLASSES = {0, 1, 2, 3, 4, 5, 7, 8}
-
-
-def get_device():
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        return torch.device("xpu:0")
-    if torch.cuda.is_available():
-        return torch.device("cuda:0")
-    return torch.device("cpu")
+IMG_EXTS = (".ppm", ".png", ".jpg", ".jpeg", ".bmp")
 
 
 def clahe_rgb(img_bgr):
@@ -39,13 +35,15 @@ def clahe_rgb(img_bgr):
     return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
 
-def load_gtsrb():
+def load_gtsrb(data_root):
     X, y = [], []
-    for class_dir in sorted(DATA_ROOT.glob("*")):
-        if not class_dir.is_dir():
+    for class_dir in sorted(Path(data_root).glob("*")):
+        if not class_dir.is_dir() or not class_dir.name.isdigit():
             continue
         class_id = int(class_dir.name)
-        for img_path in class_dir.glob("*.ppm"):
+        for img_path in class_dir.iterdir():
+            if img_path.suffix.lower() not in IMG_EXTS:
+                continue
             img = cv2.imread(str(img_path))
             if img is None:
                 continue
@@ -68,10 +66,24 @@ def predict(model, X, device):
 
 
 def main():
-    device = get_device()
-    print(f"设备: {device}")
+    p = argparse.ArgumentParser()
+    p.add_argument("--data-root", default=None,
+                   help="GTSRB 类别根目录，默认 <dataset-root>/gtsrb_train/GTSRB/Training")
+    p.add_argument("--dataset-root", default=None)
+    p.add_argument("--model", default=str(MODEL_PATH))
+    p.add_argument("--device", default="auto")
+    p.add_argument("--num-classes", type=int, default=43)
+    args = p.parse_args()
 
-    X, y = load_gtsrb()
+    data_root = Path(args.data_root) if args.data_root else dataset_root(args.dataset_root) / "gtsrb_train/GTSRB/Training"
+    if not Path(data_root).exists():
+        raise FileNotFoundError(f"找不到数据目录: {data_root}")
+
+    device = torch.device(pick_device(args.device))
+    print(f"设备: {device}")
+    print(f"数据: {data_root}")
+
+    X, y = load_gtsrb(data_root)
     print(f"数据集: {X.shape}, {y.shape}")
 
     _, X_val, _, y_val = train_test_split(
@@ -79,8 +91,8 @@ def main():
     )
     print(f"验证集: {X_val.shape}")
 
-    model = TrafficSignNet(num_classes=43)
-    model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+    model = TrafficSignNet(num_classes=args.num_classes)
+    model.load_state_dict(torch.load(args.model, map_location="cpu"))
     model.to(device)
 
     probs = predict(model, X_val, device)
