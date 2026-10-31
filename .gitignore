@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# 编辑器
+.idea/
+.vscode/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 数据集（体积大，各机器单独准备）
+dataset/
+data/
+*.zip
+
+# 预训练权重由 ultralytics 自动下载
+yolov8n.pt
+yolov8*.pt
+yolo11*.pt
+
+# 训练过程文件，最终权重单独加入
+runs/
+
+# 上游原始 Keras 权重，已被转成 .pth
+output/upstream/*.keras
+
+# 生成物
+output/pred_*.png
+output/pred_*.mp4
+splits/
+
+# 临时文件
+*.log
+tmp/
+_temp/
